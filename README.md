@@ -17,7 +17,7 @@ A performance profiling suite for ComfyUI that automatically tracks execution ti
 
 ## Requirements
 
-- ComfyUI (latest version recommended)
+- ComfyUI (latest version)
 - Python 3.8+
 - CUDA-capable GPU (for VRAM monitoring)
 - Modern web browser
