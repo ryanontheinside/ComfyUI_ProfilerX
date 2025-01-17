@@ -1,7 +1,7 @@
 [project]
 name = "comfyui_profilerx"
 description = "Node and workflow profiling. Find bottlenecks in your workflows. See trends over time."
-version = "1.0.0"
+version = "1.0.1"
 license = {file = "LICENSE"}
 dependencies = ["psutil"]
 
