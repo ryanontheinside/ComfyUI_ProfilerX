@@ -1,0 +1,15 @@
+[project]
+name = "comfyui_profilerx"
+description = "Node and workflow profiling. Find bottlenecks in your workflows. See trends over time."
+version = "1.0.0"
+license = {file = "LICENSE"}
+dependencies = ["psutil"]
+
+[project.urls]
+Repository = "https://github.com/ryanontheinside/ComfyUI_ProfilerX"
+#  Used by Comfy Registry https://comfyregistry.org
+
+[tool.comfy]
+PublisherId = "ryanontheinside"
+DisplayName = "ComfyUI_ProfilerX"
+Icon = "📈"
