@@ -16,14 +16,16 @@ if not logger.handlers:
 
 logger.info("Initializing ComfyUI-ProfilerX...")
 
-from .prestartup import inject_profiling, PROFILER_ENABLED  # Import but don't auto-inject
+from .prestartup import inject_profiling, PROFILER_ENABLED, inject_tracking  # Import but don't auto-inject
 from . import server  # Register API routes
+from .execution_core import ExecutionTracker
 
 # Set up web directory
 WEB_DIRECTORY = "./web"
 
 # Try to inject profiling hooks
-if not inject_profiling():
+profiler_enabled = inject_profiling()
+if not profiler_enabled:
     # If injection fails, remove the profiler node from available nodes
     logger.warning("Disabling profiler nodes due to initialization failure")
     NODE_CLASS_MAPPINGS = {}
@@ -44,12 +46,20 @@ else:
         "ProfilerX": "ProfilerX"
     }
 
+# Try to inject execution tracking hooks
+execution_tracking_enabled = inject_tracking() if ExecutionTracker.ENABLED else False
+if execution_tracking_enabled:
+    logger.info("Execution tracking is enabled")
+else:
+    logger.warning("Execution tracking is disabled")
+
 def setup_js():
     """Register web extension with profiler status"""
-    logger.debug(f"Setting up web extension (enabled={PROFILER_ENABLED})")
+    logger.debug(f"Setting up web extension (profiler_enabled={PROFILER_ENABLED}, execution_tracking_enabled={execution_tracking_enabled})")
     return {
         "name": "ComfyUI-ProfilerX",
         "module": "index.js",
         "enabled": PROFILER_ENABLED,
-        "status": "active" if PROFILER_ENABLED else "disabled"
+        "status": "active" if PROFILER_ENABLED else "disabled",
+        "execution_tracking": execution_tracking_enabled
     }

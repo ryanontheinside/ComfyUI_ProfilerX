@@ -1,9 +1,10 @@
 [project]
 name = "comfyui_profilerx"
-description = "Node and workflow profiling. Find bottlenecks in your workflows. See trends over time."
-version = "1.0.1"
+description = "Node, workflow, and ComfyUI execution profiling. Find bottlenecks in your workflows. See trends over time."
+version = "1.1.0"
 license = {file = "LICENSE"}
 dependencies = ["psutil"]
+
 
 [project.urls]
 Repository = "https://github.com/ryanontheinside/ComfyUI_ProfilerX"
