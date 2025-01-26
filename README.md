@@ -93,6 +93,33 @@ ProfilerX integrates directly with ComfyUI's execution system to collect perform
 - All data is collected automatically with minimal performance impact
 - Historical data is stored locally for trend analysis
 
+## Execution Tracking
+
+In addition to workflow profiling, this extension includes a detailed execution tracking system that monitors ComfyUI's internal method calls. This can be useful for:
+- Understanding the execution flow of your workflows
+- Identifying bottlenecks in specific operations
+- Debugging performance issues
+- Analyzing method call patterns and timing
+
+### Enabling Execution Tracking
+
+By default, execution tracking is disabled. To enable it:
+
+1. Open `ComfyUI_ProfilerX/execution_core.py`
+2. Find the `ENABLED` flag at the top of the `ExecutionTracker` class:
+```python
+class ExecutionTracker:
+    _instance = None
+    _lock = threading.Lock()
+    ENABLED = False  # Change this to True to enable tracking
+```
+3. Change `ENABLED = False` to `ENABLED = True`
+4. Restart ComfyUI
+
+When enabled, the tracker will record detailed timing information for internal ComfyUI operations in `ComfyUI_ProfilerX/data/method_traces.json`.
+
+
+
 ## Other Projects by RyanOnTheInside
 
 Check out my other ComfyUI custom nodes:
