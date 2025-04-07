@@ -14,7 +14,7 @@ logger.setLevel(logging.ERROR)
 class ExecutionTracker:
     _instance = None
     _lock = threading.Lock()
-    ENABLED = False #this is a global variable that controls whether the execution tracker is enabled or not
+    ENABLED = True #this is a global variable that controls whether the execution tracker is enabled or not
     
     def __init__(self):
         self.data_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "data")
