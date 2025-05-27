@@ -66,6 +66,13 @@ class ProfilerManager:
         else:
             logger.debug("No existing history file found")
             self.history = []
+        
+        # Batching and async I/O for performance
+        self._save_counter = 0
+        self._save_batch_size = 5  # Only save every 5 workflows
+        self._save_executor = None
+        import concurrent.futures
+        self._save_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="ProfilerSave")
 
     def _update_node_average(self, node_type: str, execution_time: float, vram_used: float, ram_used: float) -> Dict:
         """Update rolling average for a node type"""
@@ -90,8 +97,29 @@ class ProfilerManager:
         ) / self.workflow_averages['count']
         return self.workflow_averages
 
-    def _save_history(self):
-        """Save profiling history to disk"""
+    def _save_history(self, force=False):
+        """Save profiling history to disk (batched and async for performance)"""
+        if not force:
+            self._save_counter += 1
+            if self._save_counter < self._save_batch_size:
+                return  # Skip saving until batch size reached
+            self._save_counter = 0  # Reset counter
+        
+        # Submit async save operation
+        if self._save_executor:
+            self._save_executor.submit(self._async_save_history)
+        else:
+            self._sync_save_history()
+    
+    def _async_save_history(self):
+        """Async save operation"""
+        try:
+            self._sync_save_history()
+        except Exception as e:
+            logger.error(f"Async save failed: {e}")
+    
+    def _sync_save_history(self):
+        """Synchronous save operation"""
         try:
             with open(self.history_file, 'w') as f:
                 json.dump(self.history[-self.max_history:], f, indent=2)
@@ -295,9 +323,9 @@ class ProfilerManager:
             with open(path, 'w') as f:
                 json.dump(self.history, f, indent=2)
             
-            # Clear current history
+            # Clear current history and force synchronous save
             self.history = []
-            self._save_history()  # Save empty history to current file
+            self._sync_save_history()  # Force sync save for critical operation
             
             logger.debug(f"Created archive: {filename}")
             return filename
@@ -328,7 +356,7 @@ class ProfilerManager:
                 
             # Update current history
             self.history = archived_history
-            self._save_history()  # Update current history file
+            self._sync_save_history()  # Force sync save for critical operation
             
             # Delete the archive file since it's now loaded
             os.remove(path)
