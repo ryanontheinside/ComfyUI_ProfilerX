@@ -46,9 +46,21 @@ export function createPerformanceMonitor() {
         if (!isVisible) {
             // Position the popup relative to the button
             const rect = button.getBoundingClientRect();
-            popup.style.setProperty('--left', `${rect.left}px`);
-            popup.style.setProperty('--top', `${rect.bottom}px`);
-            popup.style.setProperty('--limit', `${rect.bottom}px`);
+            const popupWidth = 300; // min-width from CSS
+            
+            // Check if popup would go off-screen to the right
+            const viewportWidth = window.innerWidth;
+            const wouldOverflow = rect.left + popupWidth > viewportWidth;
+            
+            if (wouldOverflow) {
+                // Position popup to the left of the button (right-aligned)
+                popup.style.left = `${rect.right - popupWidth}px`;
+            } else {
+                // Position popup to the right of the button (left-aligned)
+                popup.style.left = `${rect.left}px`;
+            }
+            
+            popup.style.top = `${rect.bottom + 4}px`; // Add small gap
             popup.classList.add('open');
             popup.style.display = 'block';
             updateMenuStats(popup);
