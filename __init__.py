@@ -24,34 +24,45 @@ from .execution_core import ExecutionTracker
 WEB_DIRECTORY = "./web"
 
 # Try to inject profiling hooks
-profiler_enabled = inject_profiling()
-if not profiler_enabled:
-    # If injection fails, remove the profiler node from available nodes
-    logger.warning("Disabling profiler nodes due to initialization failure")
+try:
+    profiler_enabled = inject_profiling()
+    if not profiler_enabled:
+        # If injection fails, remove the profiler node from available nodes
+        logger.warning("Disabling profiler nodes due to initialization failure")
+        NODE_CLASS_MAPPINGS = {}
+        NODE_DISPLAY_NAME_MAPPINGS = {}
+    else:
+        logger.info("ProfilerX initialization complete - profiler is enabled")
+        # Add empty mappings to satisfy ComfyUI's import check
+        NODE_CLASS_MAPPINGS = {
+            "ProfilerX": type("ProfilerX", (), {
+                "CATEGORY": "profiling",
+                "RETURN_TYPES": tuple(),
+                "FUNCTION": "noop",
+                "OUTPUT_NODE": True,
+                "INPUT_TYPES": lambda: {"required": {}}
+            })
+        }
+        NODE_DISPLAY_NAME_MAPPINGS = {
+            "ProfilerX": "ProfilerX"
+        }
+except Exception as e:
+    logger.error(f"Failed to initialize ProfilerX: {e}")
+    # Gracefully disable the extension
     NODE_CLASS_MAPPINGS = {}
     NODE_DISPLAY_NAME_MAPPINGS = {}
-else:
-    logger.info("ProfilerX initialization complete - profiler is enabled")
-    # Add empty mappings to satisfy ComfyUI's import check
-    NODE_CLASS_MAPPINGS = {
-        "ProfilerX": type("ProfilerX", (), {
-            "CATEGORY": "profiling",
-            "RETURN_TYPES": tuple(),
-            "FUNCTION": "noop",
-            "OUTPUT_NODE": True,
-            "INPUT_TYPES": lambda: {"required": {}}
-        })
-    }
-    NODE_DISPLAY_NAME_MAPPINGS = {
-        "ProfilerX": "ProfilerX"
-    }
+    profiler_enabled = False
 
 # Try to inject execution tracking hooks
-execution_tracking_enabled = inject_tracking() if ExecutionTracker.ENABLED else False
-if execution_tracking_enabled:
-    logger.info("Execution tracking is enabled")
-else:
-    logger.warning("Execution tracking is disabled")
+try:
+    execution_tracking_enabled = inject_tracking() if ExecutionTracker.ENABLED and profiler_enabled else False
+    if execution_tracking_enabled:
+        logger.info("Execution tracking is enabled")
+    else:
+        logger.warning("Execution tracking is disabled")
+except Exception as e:
+    logger.error(f"Failed to initialize execution tracking: {e}")
+    execution_tracking_enabled = False
 
 def setup_js():
     """Register web extension with profiler status"""

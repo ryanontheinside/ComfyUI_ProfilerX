@@ -56,10 +56,10 @@ def PromptExecutor_execute_with_profiling(self, prompt, prompt_id, extra_data={}
         logger.debug(f"Workflow complete, ending profiling for {prompt_id}")
         profiler.end_workflow(prompt_id)
 
-def execute_with_profiling(server, dynprompt, caches, current_item, extra_data, executed, prompt_id, execution_list, pending_subgraph_results):
+def execute_with_profiling(server, dynprompt, caches, current_item, extra_data, executed, prompt_id, execution_list, pending_subgraph_results, pending_async_nodes):
     """Minimal wrapper around execute to collect profiling data"""
     if not PROFILER_ENABLED or not prompt_id:
-        return original_execute(server, dynprompt, caches, current_item, extra_data, executed, prompt_id, execution_list, pending_subgraph_results)
+        return original_execute(server, dynprompt, caches, current_item, extra_data, executed, prompt_id, execution_list, pending_subgraph_results, pending_async_nodes)
 
     try:
         node = dynprompt.get_node(current_item)
@@ -69,7 +69,7 @@ def execute_with_profiling(server, dynprompt, caches, current_item, extra_data, 
         logger.debug(f"Profiling node execution - id: {node_id}, type: {node_type}")
     except Exception as e:
         logger.error(f"Failed to get node info: {e}")
-        return original_execute(server, dynprompt, caches, current_item, extra_data, executed, prompt_id, execution_list, pending_subgraph_results)
+        return original_execute(server, dynprompt, caches, current_item, extra_data, executed, prompt_id, execution_list, pending_subgraph_results, pending_async_nodes)
 
     profiler = ProfilerManager.get_instance()
     try:
@@ -79,7 +79,7 @@ def execute_with_profiling(server, dynprompt, caches, current_item, extra_data, 
         logger.debug(f"Node {node_id} cache hit: {cache_hit}")
 
         # Execute node
-        result = original_execute(server, dynprompt, caches, current_item, extra_data, executed, prompt_id, execution_list, pending_subgraph_results)
+        result = original_execute(server, dynprompt, caches, current_item, extra_data, executed, prompt_id, execution_list, pending_subgraph_results, pending_async_nodes)
 
         # End profiling
         outputs = caches.outputs.get(current_item)
@@ -93,7 +93,7 @@ def execute_with_profiling(server, dynprompt, caches, current_item, extra_data, 
         logger.error(f"Error during node execution: {e}")
         profiler.record_error(prompt_id, node_id, str(e))
         # Don't re-raise - let ComfyUI handle the error
-        return original_execute(server, dynprompt, caches, current_item, extra_data, executed, prompt_id, execution_list, pending_subgraph_results)
+        return original_execute(server, dynprompt, caches, current_item, extra_data, executed, prompt_id, execution_list, pending_subgraph_results, pending_async_nodes)
 
 def inject_profiling():
     """Inject minimal profiling hook"""

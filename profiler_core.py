@@ -7,6 +7,7 @@ import os
 import logging
 from collections import defaultdict
 from typing import Dict, List, Optional
+from .utilities.memory_manager import get_memory_manager
 
 logger = logging.getLogger('ComfyUI-ProfilerX')
 logger.setLevel(logging.ERROR)
@@ -29,9 +30,21 @@ class ProfilerManager:
         self.max_history = 10000
         self.process = psutil.Process()
         
+        # Initialize memory manager for cross-platform support
+        try:
+            self.memory_manager = get_memory_manager()
+            logger.debug(f"Memory manager initialized for device: {self.memory_manager.device_type}")
+        except Exception as e:
+            logger.error(f"Failed to initialize memory manager: {e}")
+            # Use a fallback dummy memory manager
+            self.memory_manager = self._create_fallback_memory_manager()
+        
         # Run benchmark
         logger.setLevel(logging.DEBUG)  # Temporarily set to debug to see benchmark
-        self._benchmark_reset_stats()
+        try:
+            self._benchmark_reset_stats()
+        except Exception as e:
+            logger.warning(f"Memory benchmark failed: {e}")
         logger.setLevel(logging.ERROR)  # Reset to normal level
         
         # Rolling averages for nodes and workflow
@@ -161,7 +174,7 @@ class ProfilerManager:
         profile['endTime'] = time.time() * 1000
 
         # Update peak memory usage
-        profile['totalVramPeak'] = torch.cuda.max_memory_allocated()
+        profile['totalVramPeak'] = self.memory_manager.max_memory_allocated()
         profile['totalRamPeak'] = self.process.memory_info().rss
 
         # Calculate and update workflow averages
@@ -199,8 +212,8 @@ class ProfilerManager:
         profile = self.active_profiles[prompt_id]
         
         # Reset peak stats to track this node's peak specifically
-        torch.cuda.reset_peak_memory_stats()
-        base_vram = torch.cuda.memory_allocated()  # Store base VRAM to calculate true peak increase
+        self.memory_manager.reset_peak_memory_stats()
+        base_vram = self.memory_manager.memory_allocated()  # Store base VRAM to calculate true peak increase
         
         profile['nodes'][node_id] = {
             'nodeId': node_id,
@@ -227,8 +240,8 @@ class ProfilerManager:
         profile = self.active_profiles[prompt_id]
         node = profile['nodes'][node_id]
         node['endTime'] = time.time() * 1000
-        node['vramAfter'] = torch.cuda.memory_allocated()
-        total_peak = torch.cuda.max_memory_allocated()
+        node['vramAfter'] = self.memory_manager.memory_allocated()
+        total_peak = self.memory_manager.max_memory_allocated()
         node['vramPeak'] = total_peak - node['vramBefore']  # Calculate the actual peak increase from base
         node['ramAfter'] = self.process.memory_info().rss
         node['outputSizes'] = self._get_tensor_sizes(outputs)
@@ -399,8 +412,35 @@ class ProfilerManager:
         """Benchmark the overhead of reset_peak_memory_stats"""
         start = time.perf_counter_ns()
         for _ in range(iterations):
-            torch.cuda.reset_peak_memory_stats()
+            self.memory_manager.reset_peak_memory_stats()
         end = time.perf_counter_ns()
         avg_ns = (end - start) / iterations
-        logger.debug(f"Average reset_peak_memory_stats time: {avg_ns:.2f} nanoseconds")
-        return avg_ns 
+        device_info = self.memory_manager.memory_info()
+        logger.debug(f"Average reset_peak_memory_stats time: {avg_ns:.2f} nanoseconds on {device_info['device_name']}")
+        return avg_ns
+
+    def _create_fallback_memory_manager(self):
+        """Create a dummy memory manager when initialization fails"""
+        class FallbackMemoryManager:
+            def __init__(self):
+                self.device_type = 'unknown'
+                self.device_name = 'Unknown Device'
+            
+            def memory_allocated(self):
+                return 0
+            
+            def max_memory_allocated(self):
+                return 0
+            
+            def reset_peak_memory_stats(self):
+                pass
+            
+            def memory_info(self):
+                return {
+                    'allocated': 0,
+                    'max_allocated': 0,
+                    'device_name': self.device_name,
+                    'device_type': self.device_type
+                }
+        
+        return FallbackMemoryManager()
