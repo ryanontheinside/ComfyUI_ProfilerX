@@ -56,10 +56,10 @@ def PromptExecutor_execute_with_profiling(self, prompt, prompt_id, extra_data={}
         logger.debug(f"Workflow complete, ending profiling for {prompt_id}")
         profiler.end_workflow(prompt_id)
 
-def execute_with_profiling(server, dynprompt, caches, current_item, extra_data, executed, prompt_id, execution_list, pending_subgraph_results):
+async def execute_with_profiling(server, dynprompt, caches, current_item, extra_data, executed, prompt_id, execution_list, pending_subgraph_results, pending_async_nodes):
     """Minimal wrapper around execute to collect profiling data"""
     if not PROFILER_ENABLED or not prompt_id:
-        return original_execute(server, dynprompt, caches, current_item, extra_data, executed, prompt_id, execution_list, pending_subgraph_results)
+        return await original_execute(server, dynprompt, caches, current_item, extra_data, executed, prompt_id, execution_list, pending_subgraph_results, pending_async_nodes)
 
     try:
         node = dynprompt.get_node(current_item)
@@ -69,7 +69,7 @@ def execute_with_profiling(server, dynprompt, caches, current_item, extra_data, 
         logger.debug(f"Profiling node execution - id: {node_id}, type: {node_type}")
     except Exception as e:
         logger.error(f"Failed to get node info: {e}")
-        return original_execute(server, dynprompt, caches, current_item, extra_data, executed, prompt_id, execution_list, pending_subgraph_results)
+        return await original_execute(server, dynprompt, caches, current_item, extra_data, executed, prompt_id, execution_list, pending_subgraph_results, pending_async_nodes)
 
     profiler = ProfilerManager.get_instance()
     try:
@@ -79,7 +79,7 @@ def execute_with_profiling(server, dynprompt, caches, current_item, extra_data, 
         logger.debug(f"Node {node_id} cache hit: {cache_hit}")
 
         # Execute node
-        result = original_execute(server, dynprompt, caches, current_item, extra_data, executed, prompt_id, execution_list, pending_subgraph_results)
+        result = await original_execute(server, dynprompt, caches, current_item, extra_data, executed, prompt_id, execution_list, pending_subgraph_results, pending_async_nodes)
 
         # End profiling
         outputs = caches.outputs.get(current_item)
@@ -93,7 +93,7 @@ def execute_with_profiling(server, dynprompt, caches, current_item, extra_data, 
         logger.error(f"Error during node execution: {e}")
         profiler.record_error(prompt_id, node_id, str(e))
         # Don't re-raise - let ComfyUI handle the error
-        return original_execute(server, dynprompt, caches, current_item, extra_data, executed, prompt_id, execution_list, pending_subgraph_results)
+        return await original_execute(server, dynprompt, caches, current_item, extra_data, executed, prompt_id, execution_list, pending_subgraph_results, pending_async_nodes)
 
 def inject_profiling():
     """Inject minimal profiling hook"""
@@ -131,15 +131,15 @@ def PromptExecutor_init_with_tracking(self, *args, **kwargs):
     tracker = ExecutionTracker.get_instance()
     return tracker.track_method_call("__init__", "PromptExecutor")(original_PromptExecutor_init)(self, *args, **kwargs)
 
-def execute_with_tracking(server, dynprompt, caches, current_item, extra_data, executed, prompt_id, execution_list, pending_subgraph_results):
+async def execute_with_tracking(server, dynprompt, caches, current_item, extra_data, executed, prompt_id, execution_list, pending_subgraph_results, pending_async_nodes):
     """Track node execution while preserving profiling"""
     # First apply execution tracking
     tracker = ExecutionTracker.get_instance()
     tracked_func = tracker.track_method_call("execute")(original_execute)
-    
+
     # Then apply profiling wrapper
     if not PROFILER_ENABLED or not prompt_id:
-        return tracked_func(server, dynprompt, caches, current_item, extra_data, executed, prompt_id, execution_list, pending_subgraph_results)
+        return await tracked_func(server, dynprompt, caches, current_item, extra_data, executed, prompt_id, execution_list, pending_subgraph_results, pending_async_nodes)
 
     try:
         node = dynprompt.get_node(current_item)
@@ -149,7 +149,7 @@ def execute_with_tracking(server, dynprompt, caches, current_item, extra_data, e
         logger.debug(f"Profiling node execution - id: {node_id}, type: {node_type}")
     except Exception as e:
         logger.error(f"Failed to get node info: {e}")
-        return tracked_func(server, dynprompt, caches, current_item, extra_data, executed, prompt_id, execution_list, pending_subgraph_results)
+        return await tracked_func(server, dynprompt, caches, current_item, extra_data, executed, prompt_id, execution_list, pending_subgraph_results, pending_async_nodes)
 
     profiler = ProfilerManager.get_instance()
     try:
@@ -159,7 +159,7 @@ def execute_with_tracking(server, dynprompt, caches, current_item, extra_data, e
         logger.debug(f"Node {node_id} cache hit: {cache_hit}")
 
         # Execute node with tracking
-        result = tracked_func(server, dynprompt, caches, current_item, extra_data, executed, prompt_id, execution_list, pending_subgraph_results)
+        result = await tracked_func(server, dynprompt, caches, current_item, extra_data, executed, prompt_id, execution_list, pending_subgraph_results, pending_async_nodes)
 
         # End profiling
         outputs = caches.outputs.get(current_item)
@@ -173,7 +173,7 @@ def execute_with_tracking(server, dynprompt, caches, current_item, extra_data, e
         logger.error(f"Error during node execution: {e}")
         profiler.record_error(prompt_id, node_id, str(e))
         # Don't re-raise - let ComfyUI handle the error
-        return tracked_func(server, dynprompt, caches, current_item, extra_data, executed, prompt_id, execution_list, pending_subgraph_results)
+        return await tracked_func(server, dynprompt, caches, current_item, extra_data, executed, prompt_id, execution_list, pending_subgraph_results, pending_async_nodes)
 
 def PromptExecutor_execute_with_tracking(self, prompt, prompt_id, extra_data={}, execute_outputs=[]):
     """Track workflow execution while preserving profiling"""

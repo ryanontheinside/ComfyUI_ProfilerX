@@ -161,7 +161,10 @@ class ProfilerManager:
         profile['endTime'] = time.time() * 1000
 
         # Update peak memory usage
-        profile['totalVramPeak'] = torch.cuda.max_memory_allocated()
+        if torch.cuda.is_available():
+            profile['totalVramPeak'] = torch.cuda.max_memory_allocated()
+        else:
+            profile['totalVramPeak'] = 0
         profile['totalRamPeak'] = self.process.memory_info().rss
 
         # Calculate and update workflow averages
@@ -197,11 +200,14 @@ class ProfilerManager:
 
         logger.debug(f"Starting node profiling - prompt: {prompt_id}, node: {node_id}, type: {node_type}")
         profile = self.active_profiles[prompt_id]
-        
+
         # Reset peak stats to track this node's peak specifically
-        torch.cuda.reset_peak_memory_stats()
-        base_vram = torch.cuda.memory_allocated()  # Store base VRAM to calculate true peak increase
-        
+        if torch.cuda.is_available():
+            torch.cuda.reset_peak_memory_stats()
+            base_vram = torch.cuda.memory_allocated()  # Store base VRAM to calculate true peak increase
+        else:
+            base_vram = 0
+
         profile['nodes'][node_id] = {
             'nodeId': node_id,
             'nodeType': node_type,
@@ -227,9 +233,15 @@ class ProfilerManager:
         profile = self.active_profiles[prompt_id]
         node = profile['nodes'][node_id]
         node['endTime'] = time.time() * 1000
-        node['vramAfter'] = torch.cuda.memory_allocated()
-        total_peak = torch.cuda.max_memory_allocated()
-        node['vramPeak'] = total_peak - node['vramBefore']  # Calculate the actual peak increase from base
+
+        if torch.cuda.is_available():
+            node['vramAfter'] = torch.cuda.memory_allocated()
+            total_peak = torch.cuda.max_memory_allocated()
+            node['vramPeak'] = total_peak - node['vramBefore']  # Calculate the actual peak increase from base
+        else:
+            node['vramAfter'] = 0
+            node['vramPeak'] = 0
+
         node['ramAfter'] = self.process.memory_info().rss
         node['outputSizes'] = self._get_tensor_sizes(outputs)
         node['cacheHit'] = cache_hit
@@ -397,6 +409,9 @@ class ProfilerManager:
 
     def _benchmark_reset_stats(self, iterations=1000):
         """Benchmark the overhead of reset_peak_memory_stats"""
+        if not torch.cuda.is_available():
+            logger.debug("CUDA not available, skipping reset_peak_memory_stats benchmark")
+            return 0
         start = time.perf_counter_ns()
         for _ in range(iterations):
             torch.cuda.reset_peak_memory_stats()

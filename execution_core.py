@@ -110,71 +110,142 @@ class ExecutionTracker:
             self.current_execution = None
 
     def track_method_call(self, method_name: str, class_name: str = None):
-        """Decorator to track method execution time"""
+        """Decorator to track method execution time (supports both sync and async functions)"""
         def decorator(func):
-            @functools.wraps(func)
-            def wrapper(*args, **kwargs):
-                if not self.ENABLED:
-                    return func(*args, **kwargs)
+            # Check if the function is async
+            import asyncio
+            import inspect
 
-                full_name = f"{class_name}.{method_name}" if class_name else method_name
-                start_time = time.time() * 1000
+            if asyncio.iscoroutinefunction(func):
+                # Async wrapper
+                @functools.wraps(func)
+                async def async_wrapper(*args, **kwargs):
+                    if not self.ENABLED:
+                        return await func(*args, **kwargs)
 
-                try:
-                    with self._lock:
-                        self.call_stack.append(full_name)
-                    
-                    result = func(*args, **kwargs)
-                    
-                    return result
-                finally:
-                    end_time = time.time() * 1000
-                    duration = end_time - start_time
-                    
-                    with self._lock:
-                        # Pop from call stack
-                        if self.call_stack:
-                            self.call_stack.pop()
-                        
-                        # Update method stats
-                        stats = self.traces["method_stats"][full_name]
-                        stats["total_calls"] += 1
-                        stats["total_time"] += duration
-                        stats["min_time"] = min(stats.get("min_time", float('inf')), duration)
-                        stats["max_time"] = max(stats.get("max_time", 0), duration)
-                        stats["avg_time"] = stats["total_time"] / stats["total_calls"]
-                        
-                        # Record call in current execution with enhanced context
-                        if self.current_execution:
-                            # Get queue size if available
-                            queue_size = None
-                            try:
-                                import execution
-                                if hasattr(execution, 'PromptServer') and hasattr(execution.PromptServer.instance, 'prompt_queue'):
-                                    queue = execution.PromptServer.instance.prompt_queue.queue
-                                    queue_size = len(queue) if queue else 0
-                            except:
-                                pass
+                    full_name = f"{class_name}.{method_name}" if class_name else method_name
+                    start_time = time.time() * 1000
 
-                            # Determine if operation was cached
-                            is_cache_hit = False
-                            if 'caches' in kwargs and 'current_item' in kwargs:
+                    try:
+                        with self._lock:
+                            self.call_stack.append(full_name)
+
+                        result = await func(*args, **kwargs)
+
+                        return result
+                    finally:
+                        end_time = time.time() * 1000
+                        duration = end_time - start_time
+
+                        with self._lock:
+                            # Pop from call stack
+                            if self.call_stack:
+                                self.call_stack.pop()
+
+                            # Update method stats
+                            stats = self.traces["method_stats"][full_name]
+                            stats["total_calls"] += 1
+                            stats["total_time"] += duration
+                            stats["min_time"] = min(stats.get("min_time", float('inf')), duration)
+                            stats["max_time"] = max(stats.get("max_time", 0), duration)
+                            stats["avg_time"] = stats["total_time"] / stats["total_calls"]
+
+                            # Record call in current execution with enhanced context
+                            if self.current_execution:
+                                # Get queue size if available
+                                queue_size = None
                                 try:
-                                    is_cache_hit = kwargs['caches'].outputs.get(kwargs['current_item']) is not None
+                                    import execution
+                                    if hasattr(execution, 'PromptServer') and hasattr(execution.PromptServer.instance, 'prompt_queue'):
+                                        queue = execution.PromptServer.instance.prompt_queue.queue
+                                        queue_size = len(queue) if queue else 0
                                 except:
                                     pass
 
-                            call_info = {
-                                "method": full_name,
-                                "start_time": start_time,
-                                "duration": duration,
-                                "stack_depth": len(self.call_stack) + 1,  # +1 since we already popped
-                                "parent": self.call_stack[-1] if self.call_stack else None,
-                                "queue_size": queue_size,
-                                "is_cache_hit": is_cache_hit
-                            }
-                            self.current_execution["method_calls"].append(call_info)
-            return wrapper
+                                # Determine if operation was cached
+                                is_cache_hit = False
+                                if 'caches' in kwargs and 'current_item' in kwargs:
+                                    try:
+                                        is_cache_hit = kwargs['caches'].outputs.get(kwargs['current_item']) is not None
+                                    except:
+                                        pass
+
+                                call_info = {
+                                    "method": full_name,
+                                    "start_time": start_time,
+                                    "duration": duration,
+                                    "stack_depth": len(self.call_stack) + 1,  # +1 since we already popped
+                                    "parent": self.call_stack[-1] if self.call_stack else None,
+                                    "queue_size": queue_size,
+                                    "is_cache_hit": is_cache_hit
+                                }
+                                self.current_execution["method_calls"].append(call_info)
+                return async_wrapper
+            else:
+                # Sync wrapper
+                @functools.wraps(func)
+                def wrapper(*args, **kwargs):
+                    if not self.ENABLED:
+                        return func(*args, **kwargs)
+
+                    full_name = f"{class_name}.{method_name}" if class_name else method_name
+                    start_time = time.time() * 1000
+
+                    try:
+                        with self._lock:
+                            self.call_stack.append(full_name)
+
+                        result = func(*args, **kwargs)
+
+                        return result
+                    finally:
+                        end_time = time.time() * 1000
+                        duration = end_time - start_time
+
+                        with self._lock:
+                            # Pop from call stack
+                            if self.call_stack:
+                                self.call_stack.pop()
+
+                            # Update method stats
+                            stats = self.traces["method_stats"][full_name]
+                            stats["total_calls"] += 1
+                            stats["total_time"] += duration
+                            stats["min_time"] = min(stats.get("min_time", float('inf')), duration)
+                            stats["max_time"] = max(stats.get("max_time", 0), duration)
+                            stats["avg_time"] = stats["total_time"] / stats["total_calls"]
+
+                            # Record call in current execution with enhanced context
+                            if self.current_execution:
+                                # Get queue size if available
+                                queue_size = None
+                                try:
+                                    import execution
+                                    if hasattr(execution, 'PromptServer') and hasattr(execution.PromptServer.instance, 'prompt_queue'):
+                                        queue = execution.PromptServer.instance.prompt_queue.queue
+                                        queue_size = len(queue) if queue else 0
+                                except:
+                                    pass
+
+                                # Determine if operation was cached
+                                is_cache_hit = False
+                                if 'caches' in kwargs and 'current_item' in kwargs:
+                                    try:
+                                        is_cache_hit = kwargs['caches'].outputs.get(kwargs['current_item']) is not None
+                                    except:
+                                        pass
+
+                                call_info = {
+                                    "method": full_name,
+                                    "start_time": start_time,
+                                    "duration": duration,
+                                    "stack_depth": len(self.call_stack) + 1,  # +1 since we already popped
+                                    "parent": self.call_stack[-1] if self.call_stack else None,
+                                    "queue_size": queue_size,
+                                    "is_cache_hit": is_cache_hit
+                                }
+                                self.current_execution["method_calls"].append(call_info)
+                return wrapper
         return decorator
 
     def get_method_stats(self) -> Dict:
