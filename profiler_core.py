@@ -246,11 +246,15 @@ class ProfilerManager:
         node['outputSizes'] = self._get_tensor_sizes(outputs)
         node['cacheHit'] = cache_hit
 
-        # Calculate and update averages
+        # Calculate RAM peak (similar to VRAM peak)
+        ram_increase = node['ramAfter'] - node['ramBefore']
+        node['ramPeak'] = max(0, ram_increase)  # Store peak RAM increase, never negative
+
+        # Calculate and update averages using peak values
         execution_time = node['endTime'] - node['startTime']
-        vram_used = node['vramAfter'] - node['vramBefore']
-        ram_used = node['ramAfter'] - node['ramBefore']
-        
+        vram_used = node['vramPeak']  # Use peak VRAM instead of net difference
+        ram_used = node['ramPeak']    # Use peak RAM instead of net difference
+
         # Update rolling averages with the true peak
         avg = self._update_node_average(node['nodeType'], execution_time, vram_used, ram_used)
         node['averages'] = {
