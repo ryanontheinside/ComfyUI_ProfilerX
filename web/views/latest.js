@@ -35,8 +35,8 @@ export function showLatestRun(element, stats) {
     const nodeStats = Object.entries(profile.nodes)
         .map(([nodeId, node]) => {
         const execution_time = node.endTime - node.startTime;
-        const vram_used = node.vramAfter - node.vramBefore;
-        const ram_used = node.ramAfter - node.ramBefore;
+        const vram_used = node.vramPeak || 0;
+        const ram_used = node.ramPeak || 0;
         return {
             execution_time,
             vram_used,
