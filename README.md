@@ -1,5 +1,7 @@
 # ComfyUI ProfilerX
 
+> **v2.0 — Fully rewritten for modern ComfyUI!** The old version broke when ComfyUI moved to async execution. This rewrite uses ComfyUI's official `ProgressHandler` API instead of monkey-patching, so it's stable and forward-compatible. If you tried ProfilerX before and hit crashes, update and try again — it works now.
+
 A performance profiling suite for ComfyUI that automatically tracks execution time, memory usage, and cache performance of your workflows.
 
 ## Features
@@ -8,18 +10,18 @@ A performance profiling suite for ComfyUI that automatically tracks execution ti
 - 📊 Memory usage tracking (VRAM and RAM)
 - ⚡ Node execution time breakdown
 - 💾 Cache hit/miss statistics
-- 📈 Beautiful, interactive charts and tables
+- 📈 Historical data tracking and analysis with standard deviation
 - 🎯 Zero configuration required
 - 📱 Responsive UI that integrates with ComfyUI's interface
-- 📊 Historical data tracking and analysis
 - ⚙️ Time-range filtering for analytics
 - 🔍 Sortable performance tables
+- 🍎 Apple Silicon (MPS) support
 
 ## Requirements
 
 - ComfyUI (latest version)
 - Python 3.8+
-- CUDA-capable GPU (for VRAM monitoring)
+- GPU for VRAM monitoring (CUDA or Apple Silicon MPS; CPU-only systems track RAM only)
 - Modern web browser
 
 ## Installation
@@ -48,14 +50,15 @@ pip install -r requirements.txt
 
 The profiler integrates directly into ComfyUI's interface:
 
-1. After installation, you'll see a new performance monitoring panel in the top-right corner
+1. After installation, you'll see a chart icon button in the top menu bar
 2. Run your workflows as normal
-3. The dashboard will automatically update with:
-   - Total execution time
+3. Click the icon to open the dashboard, which shows:
+   - Total execution time with average and standard deviation
    - Peak memory usage (VRAM and RAM)
-   - Cache performance metrics
+   - Cache performance metrics (hits/misses)
    - Per-node execution time breakdown
    - Historical performance trends
+   - Node analytics with stddev across runs
 
 <img src="https://github.com/user-attachments/assets/4dd514a4-8d52-4047-9f2c-3588a669e2c9" alt="ProfilerX Interface" width="600">
 
@@ -63,62 +66,49 @@ The profiler runs automatically in the background, collecting data for every wor
 
 ## Features in Detail
 
-### Real-time Monitoring
-- Live execution time tracking
-- Memory usage graphs (VRAM and RAM)
-- Cache hit/miss counters
-- Node-by-node progress tracking
+### Latest Run
+- Per-node execution time, VRAM delta, RAM delta
+- Cache hit/miss status per node
+- Workflow totals with averages and ±stddev
 
-### Analytics Dashboard
-- Historical performance trends
-- Node execution time breakdown
-- Memory usage patterns
-- Cache efficiency analysis
+### Node Analytics
+- Average execution time and VRAM per node type
+- Standard deviation columns for time and VRAM
+- Cache hit rate per node type
 - Time-range filtering
-- Sortable performance tables
+- Sortable columns
+
+### Historical Trends
+- Recent workflow runs with duration, VRAM peak, cache rate
+- Time-range filtering (1h, 6h, 24h, 7d, all)
+- Overall workflow averages
 
 ### Data Management
-- Automatic history tracking
+- Automatic history tracking (up to 10,000 runs)
 - Data persistence between sessions
-- Archive management
-- Export capabilities
+- Archive create/load/delete from the Settings tab
+- Auto-archive when history limit is reached
 
 ## How it Works
 
-ProfilerX integrates directly with ComfyUI's execution system to collect performance metrics:
+ProfilerX uses ComfyUI's official `ProgressHandler` API to collect performance metrics with minimal overhead:
 
-- Execution time is measured for both individual nodes and the entire workflow
-- Memory usage is tracked using `torch.cuda` for VRAM and `psutil` for RAM
-- Cache performance is monitored by intercepting ComfyUI's caching system
-- All data is collected automatically with minimal performance impact
-- Historical data is stored locally for trend analysis
+- A single small patch re-injects the profiler handler when ComfyUI resets progress state for each execution
+- `start_handler` / `finish_handler` callbacks measure per-node timing and memory
+- Cache hits are detected automatically (nodes that receive `finish` without `start`)
+- VRAM is tracked via `torch.cuda` (NVIDIA) or `torch.mps` (Apple Silicon), RAM via `psutil`
+- Standard deviation is computed incrementally using Welford's online algorithm
+- Historical data is stored locally in `data/profiling_history.json`
 
-## Execution Tracking
+## REST API
 
-In addition to workflow profiling, this extension includes a detailed execution tracking system that monitors ComfyUI's internal method calls. This can be useful for:
-- Understanding the execution flow of your workflows
-- Identifying bottlenecks in specific operations
-- Debugging performance issues
-- Analyzing method call patterns and timing
+ProfilerX exposes endpoints for the frontend (also usable by scripts):
 
-### Enabling Execution Tracking
-
-By default, execution tracking is disabled. To enable it:
-
-1. Open `ComfyUI_ProfilerX/execution_core.py`
-2. Find the `ENABLED` flag at the top of the `ExecutionTracker` class:
-```python
-class ExecutionTracker:
-    _instance = None
-    _lock = threading.Lock()
-    ENABLED = False  # Change this to True to enable tracking
-```
-3. Change `ENABLED = False` to `ENABLED = True`
-4. Restart ComfyUI
-
-When enabled, the tracker will record detailed timing information for internal ComfyUI operations in `ComfyUI_ProfilerX/data/method_traces.json`.
-
-
+- `GET /profilerx/stats` — latest run, history, node averages, workflow averages
+- `GET /profilerx/archives` — list archive files
+- `POST /profilerx/archive` — archive current history
+- `POST /profilerx/archive/{filename}/load` — load an archive
+- `DELETE /profilerx/archive/{filename}` — delete an archive
 
 ## Other Projects by RyanOnTheInside
 
@@ -134,4 +124,3 @@ Contributions are welcome! Please feel free to submit a Pull Request. For major 
 ## License
 
 MIT License - feel free to use this in your own projects!
-
