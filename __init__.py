@@ -1,65 +1,34 @@
-"""Profiler extension for ComfyUI"""
-import os
+"""ComfyUI_ProfilerX — workflow profiling via ProgressHandler API"""
 import logging
 
-# Configure logging before imports
 logger = logging.getLogger('ComfyUI-ProfilerX')
-logger.setLevel(logging.ERROR)  # Set to DEBUG level for maximum info
 
-# Add console handler if not already added
-if not logger.handlers:
-    ch = logging.StreamHandler()
-    ch.setLevel(logging.DEBUG)  # Also set handler to DEBUG
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    ch.setFormatter(formatter)
-    logger.addHandler(ch)
+from comfy_execution import progress
+import execution
+from .handler import ProfilerXProgressHandler
+from .storage import StorageManager
+from .routes import register_routes
 
-logger.info("Initializing ComfyUI-ProfilerX...")
+# Initialize storage and handler
+storage = StorageManager()
+handler = ProfilerXProgressHandler(storage)
 
-from .prestartup import inject_profiling, PROFILER_ENABLED, inject_tracking  # Import but don't auto-inject
-from . import server  # Register API routes
-from .execution_core import ExecutionTracker
+# Patch reset_progress_state to re-inject our handler after each reset.
+# This is the only monkey-patch needed: ComfyUI creates a fresh ProgressRegistry
+# on every execution, which blows away all handlers. We re-add ours each time.
+_original_reset = progress.reset_progress_state
 
-# Set up web directory
+def _patched_reset(prompt_id, dynprompt):
+    _original_reset(prompt_id, dynprompt)
+    progress.add_progress_handler(handler)
+
+# Patch both the module-level function and the imported reference in execution.py
+progress.reset_progress_state = _patched_reset
+execution.reset_progress_state = _patched_reset
+
+# Register REST API routes
+register_routes(storage, handler)
+
 WEB_DIRECTORY = "./web"
-
-# Try to inject profiling hooks
-profiler_enabled = inject_profiling()
-if not profiler_enabled:
-    # If injection fails, remove the profiler node from available nodes
-    logger.warning("Disabling profiler nodes due to initialization failure")
-    NODE_CLASS_MAPPINGS = {}
-    NODE_DISPLAY_NAME_MAPPINGS = {}
-else:
-    logger.info("ProfilerX initialization complete - profiler is enabled")
-    # Add empty mappings to satisfy ComfyUI's import check
-    NODE_CLASS_MAPPINGS = {
-        "ProfilerX": type("ProfilerX", (), {
-            "CATEGORY": "profiling",
-            "RETURN_TYPES": tuple(),
-            "FUNCTION": "noop",
-            "OUTPUT_NODE": True,
-            "INPUT_TYPES": lambda: {"required": {}}
-        })
-    }
-    NODE_DISPLAY_NAME_MAPPINGS = {
-        "ProfilerX": "ProfilerX"
-    }
-
-# Try to inject execution tracking hooks
-execution_tracking_enabled = inject_tracking() if ExecutionTracker.ENABLED else False
-if execution_tracking_enabled:
-    logger.info("Execution tracking is enabled")
-else:
-    logger.warning("Execution tracking is disabled")
-
-def setup_js():
-    """Register web extension with profiler status"""
-    logger.debug(f"Setting up web extension (profiler_enabled={PROFILER_ENABLED}, execution_tracking_enabled={execution_tracking_enabled})")
-    return {
-        "name": "ComfyUI-ProfilerX",
-        "module": "index.js",
-        "enabled": PROFILER_ENABLED,
-        "status": "active" if PROFILER_ENABLED else "disabled",
-        "execution_tracking": execution_tracking_enabled
-    }
+NODE_CLASS_MAPPINGS = {}
+NODE_DISPLAY_NAME_MAPPINGS = {}
