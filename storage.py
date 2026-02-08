@@ -18,10 +18,14 @@ class StorageManager:
         self.history: List[Dict] = []
         self.max_history = 10000
         self.node_averages: Dict[str, Dict] = defaultdict(lambda: {
-            'total_time': 0.0, 'count': 0, 'vram_usage': 0.0, 'ram_usage': 0.0
+            'total_time': 0.0, 'count': 0, 'vram_usage': 0.0, 'ram_usage': 0.0,
+            '_m2_time': 0.0, '_m2_vram': 0.0, '_m2_ram': 0.0,
+            'std_time': 0.0, 'std_vram': 0.0, 'std_ram': 0.0,
         })
         self.workflow_averages = {
-            'total_time': 0.0, 'count': 0, 'vram_peak': 0.0, 'ram_peak': 0.0
+            'total_time': 0.0, 'count': 0, 'vram_peak': 0.0, 'ram_peak': 0.0,
+            '_m2_time': 0.0, '_m2_vram': 0.0, '_m2_ram': 0.0,
+            'std_time': 0.0, 'std_vram': 0.0, 'std_ram': 0.0,
         }
 
         self.data_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "data")
@@ -43,22 +47,38 @@ class StorageManager:
 
     # --- Averages ---
 
+    @staticmethod
+    def _welford_update(avg, m2, n, new_value):
+        """Welford's online algorithm: returns (new_avg, new_m2, stddev)."""
+        delta = new_value - avg
+        new_avg = avg + delta / n
+        delta2 = new_value - new_avg
+        new_m2 = m2 + delta * delta2
+        stddev = (new_m2 / n) ** 0.5 if n > 1 else 0.0
+        return new_avg, new_m2, stddev
+
     def _update_node_average(self, node_type: str, execution_time: float, vram_used: float, ram_used: float) -> Dict:
         avg = self.node_averages[node_type]
         avg['count'] += 1
         n = avg['count']
-        avg['total_time'] = (avg['total_time'] * (n - 1) + execution_time) / n
-        avg['vram_usage'] = (avg['vram_usage'] * (n - 1) + vram_used) / n
-        avg['ram_usage'] = (avg['ram_usage'] * (n - 1) + ram_used) / n
+        avg['total_time'], avg['_m2_time'], avg['std_time'] = self._welford_update(
+            avg['total_time'], avg['_m2_time'], n, execution_time)
+        avg['vram_usage'], avg['_m2_vram'], avg['std_vram'] = self._welford_update(
+            avg['vram_usage'], avg['_m2_vram'], n, vram_used)
+        avg['ram_usage'], avg['_m2_ram'], avg['std_ram'] = self._welford_update(
+            avg['ram_usage'], avg['_m2_ram'], n, ram_used)
         return avg
 
     def _update_workflow_average(self, execution_time: float, vram_peak: float, ram_peak: float) -> Dict:
         wa = self.workflow_averages
         wa['count'] += 1
         n = wa['count']
-        wa['total_time'] = (wa['total_time'] * (n - 1) + execution_time) / n
-        wa['vram_peak'] = (wa['vram_peak'] * (n - 1) + vram_peak) / n
-        wa['ram_peak'] = (wa['ram_peak'] * (n - 1) + ram_peak) / n
+        wa['total_time'], wa['_m2_time'], wa['std_time'] = self._welford_update(
+            wa['total_time'], wa['_m2_time'], n, execution_time)
+        wa['vram_peak'], wa['_m2_vram'], wa['std_vram'] = self._welford_update(
+            wa['vram_peak'], wa['_m2_vram'], n, vram_peak)
+        wa['ram_peak'], wa['_m2_ram'], wa['std_ram'] = self._welford_update(
+            wa['ram_peak'], wa['_m2_ram'], n, ram_peak)
         return wa
 
     # --- Save / Load ---
@@ -101,12 +121,16 @@ class StorageManager:
                 run_data.get('totalRamPeak', 0),
             )
 
-            # Inject averages into run_data for frontend
+            # Inject averages + stddev into run_data for frontend
+            wa = self.workflow_averages
             run_data['averages'] = {
-                'execution_time': self.workflow_averages['total_time'],
-                'vram_peak': self.workflow_averages['vram_peak'],
-                'ram_peak': self.workflow_averages['ram_peak'],
-                'count': self.workflow_averages['count'],
+                'execution_time': wa['total_time'],
+                'vram_peak': wa['vram_peak'],
+                'ram_peak': wa['ram_peak'],
+                'count': wa['count'],
+                'std_time': wa['std_time'],
+                'std_vram': wa['std_vram'],
+                'std_ram': wa['std_ram'],
             }
             for node in run_data.get('nodes', {}).values():
                 nt = node.get('nodeType', 'unknown')
@@ -117,6 +141,9 @@ class StorageManager:
                         'vram_usage': a['vram_usage'],
                         'ram_usage': a['ram_usage'],
                         'count': a['count'],
+                        'std_time': a['std_time'],
+                        'std_vram': a['std_vram'],
+                        'std_ram': a['std_ram'],
                     }
 
             self.history.append(run_data)
@@ -125,13 +152,18 @@ class StorageManager:
             else:
                 self._save_history()
 
+    @staticmethod
+    def _strip_internal(d: Dict) -> Dict:
+        """Strip internal _m2_* fields from a dict for API responses."""
+        return {k: v for k, v in d.items() if not k.startswith('_')}
+
     def get_stats(self) -> Dict:
         with self._lock:
             return {
                 'current': {},
                 'latest': self.history[-1] if self.history else None,
-                'node_averages': dict(self.node_averages),
-                'workflow_averages': self.workflow_averages,
+                'node_averages': {k: self._strip_internal(v) for k, v in self.node_averages.items()},
+                'workflow_averages': self._strip_internal(self.workflow_averages),
                 'history': self.history[-10:],
             }
 
