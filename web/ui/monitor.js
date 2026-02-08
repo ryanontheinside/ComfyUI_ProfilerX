@@ -14,12 +14,11 @@ export function createPerformanceMonitor() {
     const icon = document.createElement('i');
     icon.className = 'mdi mdi-chart-line';
     button.appendChild(icon);
-    // Add empty text node (like other buttons)
     button.appendChild(document.createTextNode(''));
     container.appendChild(button);
-    // Create detailed stats popup with proper positioning
+    // Create detailed stats popup
     const popup = document.createElement('div');
-    popup.className = 'comfyui-popup profilerx-stats-popup left';
+    popup.className = 'comfyui-popup profilerx-stats-popup';
     popup.style.cssText = `
         display: none;
         position: fixed;
@@ -32,48 +31,47 @@ export function createPerformanceMonitor() {
         overflow-y: auto;
         box-shadow: 0 2px 8px rgba(0,0,0,0.3);
         border: 1px solid var(--border-color);
-        min-width: 300px;
+        min-width: 400px;
+        max-width: 600px;
         font-size: 12px;
     `;
     container.appendChild(popup);
+
+    function positionPopup() {
+        const rect = button.getBoundingClientRect();
+        // Position below button, right-aligned to button's right edge
+        const top = rect.bottom + 4;
+        let left = rect.right - popup.offsetWidth;
+        // Keep within viewport
+        if (left < 8) left = 8;
+        popup.style.top = top + 'px';
+        popup.style.left = left + 'px';
+    }
+
     // Toggle popup on click
     button.addEventListener('click', (e) => {
-        debug("Button clicked!");
         e.preventDefault();
         e.stopPropagation();
         const isVisible = popup.style.display !== 'none';
-        debug("Current popup visibility:", popup.style.display, "isVisible:", isVisible);
         if (!isVisible) {
-            // Position the popup relative to the button
-            const rect = button.getBoundingClientRect();
-            popup.style.setProperty('--left', `${rect.left}px`);
-            popup.style.setProperty('--top', `${rect.bottom}px`);
-            popup.style.setProperty('--limit', `${rect.bottom}px`);
-            popup.classList.add('open');
             popup.style.display = 'block';
+            positionPopup();
+            popup.classList.add('open');
             updateMenuStats(popup);
-        }
-        else {
+        } else {
             popup.classList.remove('open');
             popup.style.display = 'none';
         }
-        debug("New popup display:", popup.style.display);
         button.classList.toggle('popup-opened', !isVisible);
         button.classList.toggle('popup-closed', isVisible);
-        debug("Button classes after toggle:", button.className);
     });
     // Close popup when clicking outside
     document.addEventListener('click', (e) => {
-        debug("Document clicked, checking if outside container");
         if (!container.contains(e.target)) {
-            debug("Click was outside container, closing popup");
             popup.style.display = 'none';
             popup.classList.remove('open');
             button.classList.remove('popup-opened');
             button.classList.add('popup-closed');
-        }
-        else {
-            debug("Click was inside container");
         }
     });
     return {
